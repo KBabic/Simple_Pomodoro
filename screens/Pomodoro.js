@@ -7,344 +7,158 @@ import Timer from '../components/Timer'
 import PauseReset from '../components/PauseReset'
 import Sound from '../components/Sound'
 import styles from '../utils/styles'
-
-State = {
-   INITIAL: 'INITIAL',
-   WORK: 'WORK',
-   SHORT_BREAK: 'SHORT_BREAK',
-   LONG_BREAK: 'LONG_BREAK'
-}
-breakSound = require('../assets/sounds/short_break_sound.mp4')
-workSound = require('../assets/sounds/work_sound.mp4')
-endSound = require('../assets/sounds/end_sound.mp4')
-//breakSound = { uri: 'short_break_sound'}
-//workSound = { uri: 'work_sound'}
-//endSound = { uri: 'end_sound'}
-
+import { Session } from '../utils/Session'
+import { parameters, oneCycle, getTotalCycles, workSound, breakSound, endSound } from '../utils/parameters'
 
 class Pomodoro extends React.Component {
    constructor(props) {
       super(props)
-
       this.state = {
-         work: {
-            title: 'WORK',
-            time: 25, //min
-            running: false,
-            count: 0,
-            color: 'red'
-         },
-         shortBreak: {
-            title: 'SHORT BREAK',
-            time: 5, //min
-            running: false,
-            count: 0,
-            color: 'green'
-         },
-         longBreak: {
-            title: 'LONG BREAK',
-            time: 20, //min
-            running: false,
-            count: 0,
-            color: '#cc6600'
-         },
-         numOfCycles: {
-            title: 'NUMBER OF CYCLES',
-            value: 1,
-            count: 0,
-            color: '#b30047'
-         },
-         elapsed: 25*60*1000, //miliseconds
+         cycle: Array.from(oneCycle),
+         work: parameters.work.value,
+         shortBreak: parameters.shortBreak.value,
+         longBreak: parameters.longBreak.value,
+         numOfCycles: parameters.numOfCycles.value,
+         elapsed: parameters.work.value * 60 * 1000, // miliseconds
          buttonsEnabled: true,
          pauseResetEnabled: false,
          startEnabled: true,
-         transitionState: State.INITIAL,
-         sound: null,
-         soundPaused: true
+         session: new Session(),
+         pauseOrPlay: 'pause',
+         playSound: false
       }
+      this.totalCycles = getTotalCycles(this.state.cycle, this.state.numOfCycles)
+   }
+   componentDidMount() {
+      this.setState({ elapsed: this.state.work * 60 * 1000 })
    }
    componentWillUnmount() {
       BackgroundTimer.clearInterval(this.interval)
    }
-   componentDidUpdate(prevProps, prevState) {
-      const { elapsed, transitionState, numOfCycles, work, shortBreak, longBreak } = this.state
-
-      // enable/disable buttons after pressing START
-      if (
-         transitionState !== State.INITIAL &&
-         prevState.transitionState === State.INITIAL 
-      ) {
-         this.setState((prevState) => ({
-            ...prevState,
-            buttonsEnabled: false,
-            startEnabled: false,
-            pauseResetEnabled: true
-         }))
-      }
-      // enable/disable buttons after pressing RESET
-      if (
-         transitionState === State.INITIAL &&
-         prevState.transitionState !== State.INITIAL
-      ) {
-         this.setState((prevState) => ({
-            ...prevState,
-            buttonsEnabled: true,
-            startEnabled: true,
-            pauseResetEnabled: false
-         }))
-      }
-      // start short break session
-      if (
-         prevState.shortBreak.count < 3*numOfCycles.value &&
-         prevState.elapsed === 0 &&
-         prevState.transitionState === State.WORK &&
-         transitionState === State.WORK
-      ) {
-         this.setState((prevState) => ({
-            ...prevState,
-            elapsed: shortBreak.time*60*1000,
-            work: {...prevState.work, running: false},
-            longBreak: {...prevState.longBreak, running: false},
-            shortBreak: {
-               ...prevState.shortBreak, 
-               running: true,
-               count: 
-                  prevState.shortBreak.count === 3 ? 
-                  prevState.shortBreak.count :
-                  prevState.shortBreak.count + 1
-            },
-            transitionState: State.SHORT_BREAK,
-            soundPaused: true
-         }))
-      }
-      // start work session
-      if (
-         numOfCycles.count < numOfCycles.value &&
-         prevState.work.count < 4*numOfCycles.value &&
-         prevState.elapsed === 0 &&
-         (prevState.transitionState === State.SHORT_BREAK ||
-         prevState.transitionState === State.LONG_BREAK) &&
-         transitionState !== State.INITIAL
-      ) {
-         this.setState((prevState) => ({
-            ...prevState,
-            elapsed: work.time*60*1000,
-            work: {
-               ...prevState.work,
-               running: true,
-               count: prevState.work.count + 1
-            },
-            shortBreak: {...prevState.shortBreak, running: false},
-            longBreak: {...prevState.longBreak, running: false},
-            transitionState: State.WORK,
-            soundPaused: true
-         }))
-      }
-      // start long break session
-      if (
-         prevState.work.count % 4 === 0 &&
-         prevState.shortBreak.count % 3 === 0 &&
-         prevState.elapsed === 0 &&
-         prevState.numOfCycles.count < prevState.numOfCycles.value &&
-         prevState.transitionState === State.WORK
-      ) {
-         this.setState((prevState) => ({
-            ...prevState,
-            elapsed: longBreak.time*60*1000,
-            work: {...prevState.work, running: false},
-            shortBreak: {...prevState.shortBreak, running: false},
-            longBreak: {
-                  ...prevState.longBreak,
-                  running: true,
-                  count: prevState.longBreak.count + 1
-               },
-            transitionState: State.LONG_BREAK,
-            numOfCycles: {
-               ...prevState.numOfCycles,
-               count: prevState.numOfCycles.count + 1
-            },
-            soundPaused: true
-         }))
-      }
-      // what happens when all cycles are done
-      if (
-         parseInt(prevState.numOfCycles.count) === parseInt(prevState.numOfCycles.value) &&
-         prevState.elapsed === 0 &&
-         prevState.transitionState === State.LONG_BREAK
-      ) {
-         BackgroundTimer.clearInterval(this.interval)
-         this.resetState()
-      }
-      // play sounds during the last 8 seconds of each section:
-      if (elapsed === 8000 && prevState.elapsed !== 8000 && transitionState !== State.INITIAL) {
-         this.playSound()
-      }
-      console.log(
-         this.state.sound,
-         this.state.soundPaused,
-         this.state.elapsed
-      )
-   }
-   
    onChangeValue = (title, val) => {
-      const { work, shortBreak, longBreak, numOfCycles, elapsed } = this.state
-      switch (title) {
-         case work.title:
-            this.setState((prevState) => ({
-               ...prevState,
-               work: { ...prevState.work, time: val },
-               elapsed: work.running ? elapsed - 1000 : val*60*1000
-            }))
+      const targetParam = Object.keys(parameters).filter(key => parameters[key].title === title)
+      const target = targetParam[0]
+
+      switch(target) {
+         case 'work':
+            this.setState({ work: val, elapsed: val * 60 *1000 })
             break
-         case shortBreak.title:
-            this.setState((prevState) => ({ 
-               ...prevState,
-               shortBreak: { ...prevState.shortBreak, time: val },
-            }))
+         case 'shortBreak':
+            this.setState({ shortBreak: val })
             break
-         case longBreak.title:
-            this.setState((prevState) => ({
-               ...prevState,
-               longBreak: { ...prevState.longBreak, time: val }
-            }))
+         case 'longBreak':
+            this.setState({ longBreak: val })
             break
-         case numOfCycles.title:
-            this.setState((prevState) => ({ 
-               ...prevState,
-               numOfCycles: { ...prevState.numOfCycles, value: val } 
-            }))
+         case 'numOfCycles':
+            this.setState({ numOfCycles: val })
+            this.totalCycles = getTotalCycles(this.state.cycle, val)
       }
    }
    setTimerInterval = () => {
       this.interval = BackgroundTimer.setInterval(this.updateElapsed, 1000)
    }
    updateElapsed = () => {
-      const { work, shortBreak, longBreak, elapsed } = this.state
-      this.setState(prevState => ({
-         ...prevState,
-         elapsed: 
-            (work.running || shortBreak.running || longBreak.running) ?
-            elapsed - 1000 :
-            elapsed
-      }))
+      const { elapsed } = this.state
+      if (elapsed === 8000) {
+         this.playSound()
+      }
+      if ( elapsed === 0 ) {
+         if (this.totalCycles.length === 0 ) {
+            this.resetState()
+         } else {
+            BackgroundTimer.clearInterval(this.interval)
+            this.handleStart()
+         }
+      } else {
+         this.setState({ elapsed: elapsed - 1000 })
+      }
+   }
+   setSessionDurationAndColor = (session) => {
+      const targetParam = Object.keys(parameters).filter(key => key === session.type)
+      session.duration = this.state[targetParam]
+      session.color = parameters[targetParam].color
    }  
-   handleStart = () => {      
-      this.setState((prevState) => ({
-         ...prevState,
-         work: { 
-            ...prevState.work, 
-            running: true,
-            count: prevState.work.count + 1
-         },
-         transitionState: State.WORK
-      }))
-      this.setTimerInterval()
+   setSessionSound = (session) => {
+      switch(session.type) {
+         case 'work':
+            session.sound = breakSound
+            break
+         case 'shortBreak':
+            session.sound = workSound
+            break
+         case 'longBreak':
+            if (this.totalCycles.length === 0) {
+               session.sound = endSound
+            } else {
+               session.sound = workSound
+            }
+      }
+   }
+   handleStart = () => {
+      if (this.totalCycles.length === 0) {
+         this.resetState()
+      } else {
+         BackgroundTimer.clearInterval(this.interval)
+         const startedSession = new Session()
+         startedSession.type = this.totalCycles.shift()
+         this.setSessionDurationAndColor(startedSession)
+         this.setSessionSound(startedSession)       
+         this.setState({ 
+            session: startedSession, 
+            elapsed: startedSession.duration * 60 * 1000,
+            pauseResetEnabled: true,
+            startEnabled: false,
+            buttonsEnabled: false,
+            playSound: false
+         })
+         this.setTimerInterval()
+      }
    }
    resetState = () => {
-      const { work } = this.state
-      this.setState((prevState) => ({
-         ...prevState,
-         work: { ...prevState.work, running: false, count: 0 },
-         shortBreak: {...prevState.shortBreak, running: false, count: 0},
-         longBreak: {...prevState.longBreak, running: false, count: 0},
-         numOfCycles: {...prevState.numOfCycles, count: 0},
-         elapsed: work.time*60*1000,
-         transitionState: State.INITIAL,
-         sound: null,
-         soundPaused: true
-      }))
       BackgroundTimer.clearInterval(this.interval)
-      
+      this.setState({
+         cycle: Array.from(oneCycle),
+         work: parameters.work.value,
+         shortBreak: parameters.shortBreak.value,
+         longBreak: parameters.longBreak.value,
+         numOfCycles: parameters.numOfCycles.value,
+         elapsed: parameters.work.value * 60 * 1000,
+         buttonsEnabled: true,
+         pauseResetEnabled: false,
+         startEnabled: true,
+         session: new Session(),
+         pauseOrPlay: 'pause',
+         playSound: false
+      })
+      this.totalCycles = getTotalCycles(this.state.cycle, this.state.numOfCycles)
    }
    handlePauseOrReset = (icon) => {
-      const { transitionState } = this.state
       switch (icon) {
          case 'replay':
             this.resetState()
             break
          case 'pause':
-         // check if the State is WORK, SHORT_BREAK or LONG_BREAK
-            switch (transitionState) {
-               case State.WORK:
-                  this.setState((prevState) => ({
-                     ...prevState,
-                     soundPaused: !prevState.soundPaused,
-                     work: { ...prevState.work, running: !prevState.work.running },
-                  }))
-                  break
-               case State.SHORT_BREAK:
-                  this.setState((prevState) => ({
-                     ...prevState,
-                     soundPaused: !prevState.soundPaused,
-                     shortBreak: { ...prevState.shortBreak, running: !prevState.shortBreak.running },
-                  }))
-                  break
-               case State.LONG_BREAK:
-                  this.setState((prevState) => ({
-                     ...prevState,
-                     soundPaused: !prevState.soundPaused,
-                     longBreak: { ...prevState.longBreak, running: !prevState.longBreak.running },
-                  }))
-                  break
+            BackgroundTimer.clearInterval(this.interval)   
+            this.setState({ pauseOrPlay: 'play-arrow', playSound: false })
+            break
+         case 'play-arrow':
+            if (this.state.elapsed <= 8000) {
+               this.setState({ pauseOrPlay: 'pause', playSound: true })
+            } else {
+               this.setState({ pauseOrPlay: 'pause' })
             }
-      }
-   }
-   setTimerColor = () => {
-      const { shortBreak, longBreak, work, transitionState } = this.state
-      switch (transitionState) {
-         case State.SHORT_BREAK:
-            return shortBreak.color
-         case State.LONG_BREAK:
-            return longBreak.color
-         default:
-            return work.color
+            this.setTimerInterval()
       }
    }
    playSound = () => {
-      switch (this.state.transitionState) {
-         case State.WORK:
-            this.setState(prevState => ({
-               ...prevState,
-               sound: breakSound,
-               soundPaused: false
-            }))
-            break
-         case State.SHORT_BREAK:
-            this.setState(prevState => ({
-               ...prevState,
-               sound: workSound,
-               soundPaused: false
-            }))
-            break
-         case State.LONG_BREAK:
-         // the last cycle:
-         if (parseInt(this.state.numOfCycles.count) === parseInt(this.state.numOfCycles.value)) {
-            this.setState(prevState => ({
-               ...prevState,
-               sound: endSound,
-               soundPaused: false
-            }))
-         // not the last cycle:
-         } else {
-            this.setState(prevState => ({
-               ...prevState,
-               sound: workSound,
-               soundPaused: false
-            }))
-         }
-         break
-      }
+      this.setState({ playSound: true })
    }
    render() {
-      const {  container, containerTop, containerMiddle, 
-               containerBottom, titleContainer, titleText, 
-               startButton, startButtonTxt,  iconsContainer
-      } = styles
-      const {  work, shortBreak, longBreak, numOfCycles, 
-               buttonsEnabled, elapsed, pauseResetEnabled, 
-               startEnabled, sound, soundPaused
-      } = this.state
-      const parameters = [ work, shortBreak, longBreak ]
+      const {  container, containerTop, containerMiddle, containerBottom, titleContainer, titleText, 
+               startButton, startButtonTxt,  iconsContainer } = styles
+      const {  buttonsEnabled, elapsed, pauseResetEnabled, startEnabled, 
+               session, pauseOrPlay, playSound } = this.state
+      
       const startOpacity = startEnabled ? 1 : 0.4
       return(
          <View style={container}>
@@ -354,25 +168,25 @@ class Pomodoro extends React.Component {
             </View>
 
             <View style={containerTop}>         
-            {parameters.map(param => {
-               return (
+            {Object.keys(parameters).map(key => {
+               if(key !== 'numOfCycles') {
+                  return (
                   <Parameter
-                     key={param.title} 
-                     title={param.title}
-                     value={param.time}
-                     color={param.color}
+                     key={parameters[key].title} 
+                     title={parameters[key].title}
+                     value={this.state[key]}
+                     color={parameters[key].color}
                      onChangeValue={this.onChangeValue}
                      enabled={buttonsEnabled}
                   />)
-               })
-            }
+            }})}
             </View>
 
             <View style={containerMiddle}>
                <Parameter 
-                  title={numOfCycles.title}
-                  value={numOfCycles.value}
-                  color={numOfCycles.color}
+                  title={parameters.numOfCycles.title}
+                  value={this.state.numOfCycles}
+                  color={parameters.numOfCycles.color}
                   onChangeValue={this.onChangeValue}
                   enabled={buttonsEnabled} 
                />
@@ -393,16 +207,17 @@ class Pomodoro extends React.Component {
             <View style={containerBottom}>
                <Timer 
                   elapsed={elapsed}
-                  color={this.setTimerColor()}
+                  color={session.color}
                />
                <PauseReset
+                  icon={pauseOrPlay}
                   style={iconsContainer}
                   handlePauseOrReset={this.handlePauseOrReset}
                   enabled={pauseResetEnabled}
                />
                <Sound 
-                  paused={soundPaused}
-                  sound={sound}
+                  paused={!playSound}
+                  sound={session.sound}
                />
             </View>
          </View> 
