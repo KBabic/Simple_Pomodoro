@@ -5,23 +5,20 @@ const Parameter = props => {
 
    const handleChangeValue = (sign) => {
       const { title, value, onChangeValue } = props
-      const intValue = parseInt(value)
-      
       switch (sign) {
          case "+":
-            const incValue = intValue + 1
-            onChangeValue(title, incValue.toString())
+            const incValue = value + 1
+            onChangeValue(title, incValue)
             break
          case "-":
-            const decValue = intValue - 1
+            const decValue = value - 1
             if (decValue <= 0) {
-               onChangeValue(title, '1')
+               onChangeValue(title, 1)
             } else {
-               onChangeValue(title, decValue.toString())
+               onChangeValue(title, decValue)
             }
       }
    }
-   
    const { color, title, value, enabled } = props
    const { 
          container,
@@ -62,9 +59,6 @@ const Parameter = props => {
       </View>
    )
 }
-   
-
-
 const styles = StyleSheet.create({
    container: {
       flex: 1,
